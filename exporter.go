@@ -14,13 +14,6 @@ import (
 	"io/ioutil"
 )
 
-type metrics struct {
-	power_factor  prometheus.GaugeVec
-	voltage  prometheus.GaugeVec
-	current  prometheus.GaugeVec
-	power  prometheus.GaugeVec
-}
-
 type energy_leg struct {
 	power_factor int
 	voltage int
@@ -37,7 +30,7 @@ func getJSON( ip string ) []byte {
 	url := fmt.Sprintf("http://%s:8080/getdata", ip)
 
 	spaceClient := http.Client{
-		Timeout: time.Second * 2, // Timeout after 2 seconds
+		Timeout: time.Second * 5, // Timeout after 2 seconds
 	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -65,23 +58,12 @@ func getJSON( ip string ) []byte {
 
 }
 func getMetrics(ip string) [20]energy_leg {
-
-
-	// jsonData := `{"data":[[812,12638,15400,1580],[820,12634,13880,1437]]}`
-	// data := energy{}
 	var tmp EnergyData
-
 	var data [20]energy_leg
 
     if err := json.Unmarshal(getJSON(ip), &tmp); err != nil {
 		fmt.Println(err)
     }
-
-
-    // if err := json.Unmarshal([]byte(jsonData), &tmp); err != nil {
-	// 	fmt.Println(err)
-    // }
-
 
 	for legArray := range (tmp.Data) {
 		var leg energy_leg
@@ -96,8 +78,7 @@ func getMetrics(ip string) [20]energy_leg {
 	return(data)
 }
 
-func updateMetrics ( eyedro_ip ) {
-
+func updateLoop (eyedro_ip string) {
 	power_factor := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name:        "eyedro_power_factor",
 		Help:        "Power Factor.",
@@ -136,16 +117,18 @@ func updateMetrics ( eyedro_ip ) {
 	prometheus.MustRegister(power)
 
 
-
-	energyData := getMetrics( eyedro_ip )
-	for leg := range energyData {
-		if energyData[leg].voltage != 0 {
-			leg_str := strconv.Itoa(leg)
-			power_factor.WithLabelValues(leg_str).Set(float64(energyData[leg].power_factor))
-			voltage.WithLabelValues(leg_str).Set(float64(energyData[leg].voltage))
-			current.WithLabelValues(leg_str).Set(float64(energyData[leg].current))
-			power.WithLabelValues(leg_str).Set(float64(energyData[leg].power))
+	for {
+		energyData := getMetrics( eyedro_ip )
+		for leg := range energyData {
+			if energyData[leg].voltage != 0 {
+				leg_str := strconv.Itoa(leg)
+				power_factor.WithLabelValues(leg_str).Set(float64(energyData[leg].power_factor))
+				voltage.WithLabelValues(leg_str).Set(float64(energyData[leg].voltage))
+				current.WithLabelValues(leg_str).Set(float64(energyData[leg].current))
+				power.WithLabelValues(leg_str).Set(float64(energyData[leg].power))
+			}
 		}
+		time.Sleep( 5 * time.Second )
 	}
 }
 
@@ -169,12 +152,9 @@ func main () {
 		eyedro_ip = "192.168.0.1"
 	}
 
-	fmt.Println(eyedro_ip)
-
-	// eyedro_ip := os.Getenv("EYEDRO_IP")
+	go updateLoop(eyedro_ip)
 
 
 	http.Handle("/metrics", promhttp.Handler())
-	// http.ListenAndServe(":8080", nil)
 	http.ListenAndServe(fmt.Sprintf(":%s", listen_port), nil)
 }
