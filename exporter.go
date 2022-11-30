@@ -154,7 +154,6 @@ func main () {
 
 	go updateLoop(eyedro_ip)
 
-
 	http.Handle("/metrics", promhttp.Handler())
 	http.ListenAndServe(fmt.Sprintf(":%s", listen_port), nil)
 }
